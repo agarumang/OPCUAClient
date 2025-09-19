@@ -27,7 +27,11 @@ namespace FileReader
             try
             {
                 // Ensure certificates exist before creating configuration
-                await CertificateManager.EnsureCertificatesExistAsync();
+                var certSetupResult = await CertificateManager.EnsureCertificatesExistAsync();
+                if (!certSetupResult)
+                {
+                    Console.WriteLine("⚠️ Certificate setup failed, trying to continue with minimal configuration...");
+                }
 
                 // Create application configuration with local certificate stores
                 var appDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
@@ -69,7 +73,20 @@ namespace FileReader
                     TraceConfiguration = new TraceConfiguration()
                 };
 
-                await _configuration.Validate(ApplicationType.Client);
+                try
+                {
+                    await _configuration.Validate(ApplicationType.Client);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Configuration validation failed: {ex.Message}");
+                    Console.WriteLine("Trying with minimal security configuration...");
+                    
+                    // Fallback to minimal configuration
+                    _configuration = CreateMinimalConfiguration();
+                    await _configuration.Validate(ApplicationType.Client);
+                }
+                
                 if (_configuration.SecurityConfiguration.AutoAcceptUntrustedCertificates)
                 {
                     _configuration.CertificateValidator.CertificateValidation += (s, e) => { e.Accept = (e.Error.StatusCode == StatusCodes.BadCertificateUntrusted); };
@@ -381,6 +398,25 @@ namespace FileReader
                 return result;
             }
             return null;
+        }
+
+        private ApplicationConfiguration CreateMinimalConfiguration()
+        {
+            return new ApplicationConfiguration()
+            {
+                ApplicationName = _settings.ApplicationName,
+                ApplicationUri = Utils.Format(@"urn:{0}:PDFDataExtractor", Environment.MachineName),
+                ApplicationType = ApplicationType.Client,
+                SecurityConfiguration = new SecurityConfiguration
+                {
+                    AutoAcceptUntrustedCertificates = true,
+                    AddAppCertToTrustedStore = false
+                },
+                TransportConfigurations = new TransportConfigurationCollection(),
+                TransportQuotas = new TransportQuotas { OperationTimeout = _settings.OperationTimeout },
+                ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = _settings.SessionTimeout },
+                TraceConfiguration = new TraceConfiguration()
+            };
         }
 
         public void Dispose()

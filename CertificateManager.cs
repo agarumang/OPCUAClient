@@ -18,6 +18,9 @@ namespace FileReader
                 // Check and create certificate directories
                 CheckCertificateStores(config);
                 
+                // Check if application certificate exists, create if needed
+                await CreateApplicationCertificate(config);
+                
                 // Validate application configuration
                 await config.Validate(ApplicationType.Client);
                 
@@ -27,6 +30,107 @@ namespace FileReader
             {
                 // For deployment scenarios, we'll create a simple fallback
                 return await CreateSimpleCertificateSetup();
+            }
+        }
+
+        private static async Task CreateApplicationCertificate(ApplicationConfiguration config)
+        {
+            try
+            {
+                var certId = config.SecurityConfiguration.ApplicationCertificate;
+                
+                // Check if certificate already exists
+                var existingCert = await certId.Find(true);
+                
+                if (existingCert == null)
+                {
+                    // Create application certificate
+                    var certificate = CertificateFactory.CreateCertificate(
+                        certId.StoreType,
+                        certId.StorePath,
+                        null,  // password
+                        config.ApplicationUri,
+                        config.ApplicationName,
+                        certId.SubjectName,
+                        null,  // domains
+                        2048,  // key size
+                        DateTime.UtcNow - TimeSpan.FromDays(1),  // not before
+                        730,   // lifetime in days (2 years)
+                        256,   // hash size
+                        false, // ca certificate
+                        null,  // issuer certificate
+                        null   // public key
+                    );
+                    
+                    Console.WriteLine($"✅ Application certificate created: {certificate.Subject}");
+                }
+                else
+                {
+                    // Check if certificate is still valid
+                    if (existingCert.NotAfter < DateTime.Now.AddDays(30))
+                    {
+                        // Certificate expires within 30 days, create new one
+                        var newCertificate = CertificateFactory.CreateCertificate(
+                            certId.StoreType,
+                            certId.StorePath,
+                            null,
+                            config.ApplicationUri,
+                            config.ApplicationName,
+                            certId.SubjectName,
+                            null,
+                            2048,
+                            DateTime.UtcNow - TimeSpan.FromDays(1),
+                            730,
+                            256,
+                            false,
+                            null,
+                            null
+                        );
+                        
+                        Console.WriteLine($"✅ Application certificate renewed: {newCertificate.Subject}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"✅ Application certificate exists: {existingCert.Subject}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Could not create application certificate: {ex.Message}");
+                // Try simple file-based approach
+                await CreateSimpleApplicationCertificate(config);
+            }
+        }
+
+        private static async Task CreateSimpleApplicationCertificate(ApplicationConfiguration config)
+        {
+            try
+            {
+                // Simple approach: just ensure the certificate directory exists
+                var certPath = config.SecurityConfiguration.ApplicationCertificate.StorePath;
+                if (!Directory.Exists(certPath))
+                {
+                    Directory.CreateDirectory(certPath);
+                }
+                
+                // Create a simple certificate info file for tracking
+                var certInfoPath = Path.Combine(certPath, "cert_info.txt");
+                if (!File.Exists(certInfoPath))
+                {
+                    var certInfo = $"Application: {config.ApplicationName}\n" +
+                                  $"Created: {DateTime.Now}\n" +
+                                  $"Subject: {config.SecurityConfiguration.ApplicationCertificate.SubjectName}\n" +
+                                  $"URI: {config.ApplicationUri}";
+                    
+                    File.WriteAllText(certInfoPath, certInfo);
+                }
+                
+                Console.WriteLine("✅ Certificate directory structure created");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Simple certificate setup failed: {ex.Message}");
             }
         }
 
