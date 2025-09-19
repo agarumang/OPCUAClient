@@ -14,6 +14,20 @@ namespace FileReader
         {
             try
             {
+                // Check for diagnostic mode
+                if (args.Length > 0 && args[0] == "--diagnostic")
+                {
+                    RunDiagnosticMode().GetAwaiter().GetResult();
+                    return;
+                }
+
+                // Check for setup mode
+                if (args.Length > 0 && args[0] == "--setup")
+                {
+                    RunSetupMode().GetAwaiter().GetResult();
+                    return;
+                }
+
                 MainAsync(args).GetAwaiter().GetResult();
             }
             catch
@@ -26,6 +40,9 @@ namespace FileReader
         {
             try
             {
+                // First-time setup check
+                await EnsureFirstTimeSetup();
+
                 var filePath = GetPdfFilePath();
                 if (string.IsNullOrEmpty(filePath)) return;
 
@@ -42,6 +59,94 @@ namespace FileReader
             {
                 // Silent error handling - application exits
             }
+        }
+
+        static async Task EnsureFirstTimeSetup()
+        {
+            try
+            {
+                // Check if certificates exist
+                var appDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                var certDir = System.IO.Path.Combine(appDir, "Certificates");
+                
+                if (!System.IO.Directory.Exists(certDir) || System.IO.Directory.GetDirectories(certDir).Length == 0)
+                {
+                    // First time setup - create certificates silently
+                    await CertificateManager.EnsureCertificatesExistAsync();
+                }
+            }
+            catch
+            {
+                // Silent setup - if it fails, the OPC UA connection will handle it
+            }
+        }
+
+        static async Task RunDiagnosticMode()
+        {
+            Console.WriteLine("OPC UA Connection Diagnostic Tool");
+            Console.WriteLine("=================================");
+            Console.WriteLine();
+
+            try
+            {
+                var success = await OPCConnectionDiagnostic.DiagnoseConnectionAsync();
+                
+                if (!success)
+                {
+                    OPCConnectionDiagnostic.PrintCommonSolutions();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Diagnostic failed: {ex.Message}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("Press any key to exit...");
+            Console.ReadKey();
+        }
+
+        static async Task RunSetupMode()
+        {
+            Console.WriteLine("OPC UA First-Time Setup Tool");
+            Console.WriteLine("============================");
+            Console.WriteLine();
+
+            try
+            {
+                Console.WriteLine("Setting up certificates...");
+                var certResult = await CertificateManager.EnsureCertificatesExistAsync();
+                
+                if (certResult)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Testing connection...");
+                    var connectionResult = await OPCConnectionDiagnostic.DiagnoseConnectionAsync();
+                    
+                    if (connectionResult)
+                    {
+                        Console.WriteLine("✅ Setup completed successfully!");
+                    }
+                    else
+                    {
+                        Console.WriteLine("⚠️ Setup completed but connection test failed.");
+                        Console.WriteLine("This may be normal if the OPC UA server is not running.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("❌ Certificate setup failed!");
+                    CertificateManager.PrintCertificateInfo();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Setup failed: {ex.Message}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("Press any key to exit...");
+            Console.ReadKey();
         }
 
         static void CreateExcelFile(PdfDataExtractor.ExtractedData data)

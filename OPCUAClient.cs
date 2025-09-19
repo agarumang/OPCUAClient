@@ -26,18 +26,40 @@ namespace FileReader
         {
             try
             {
-                // Create application configuration
+                // Ensure certificates exist before creating configuration
+                await CertificateManager.EnsureCertificatesExistAsync();
+
+                // Create application configuration with local certificate stores
+                var appDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                
                 _configuration = new ApplicationConfiguration()
                 {
                     ApplicationName = _settings.ApplicationName,
-                    ApplicationUri = Utils.Format(@"urn:{0}:PDFDataExtractor", System.Net.Dns.GetHostName()),
+                    ApplicationUri = Utils.Format(@"urn:{0}:PDFDataExtractor", Environment.MachineName),
                     ApplicationType = ApplicationType.Client,
                     SecurityConfiguration = new SecurityConfiguration
                     {
-                        ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = Utils.Format(@"CN={0}, DC={1}", "PDF Data Extractor", System.Net.Dns.GetHostName()) },
-                        TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
-                        TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
-                        RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
+                        ApplicationCertificate = new CertificateIdentifier 
+                        { 
+                            StoreType = @"Directory", 
+                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "Own"),
+                            SubjectName = Utils.Format(@"CN={0}, DC={1}", _settings.ApplicationName, Environment.MachineName)
+                        },
+                        TrustedIssuerCertificates = new CertificateTrustList 
+                        { 
+                            StoreType = @"Directory", 
+                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "TrustedIssuers")
+                        },
+                        TrustedPeerCertificates = new CertificateTrustList 
+                        { 
+                            StoreType = @"Directory", 
+                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "TrustedPeers")
+                        },
+                        RejectedCertificateStore = new CertificateTrustList 
+                        { 
+                            StoreType = @"Directory", 
+                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "Rejected")
+                        },
                         AutoAcceptUntrustedCertificates = _settings.AutoAcceptUntrustedCertificates,
                         AddAppCertToTrustedStore = true
                     },
