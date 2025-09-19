@@ -48,15 +48,16 @@ namespace FileReader
         {
             try
             {
+                var config = ConfigurationManager.Configuration.ApplicationSettings;
                 var currentDirectory = Directory.GetCurrentDirectory();
-                var excelFolderPath = Path.Combine(currentDirectory, "excel");
+                var excelFolderPath = Path.Combine(currentDirectory, config.ExcelFolderName);
                 
                 if (!Directory.Exists(excelFolderPath))
                 {
                     Directory.CreateDirectory(excelFolderPath);
                 }
 
-                var excelPath = Path.Combine(excelFolderPath, "ExtractedExcel.xlsx");
+                var excelPath = Path.Combine(excelFolderPath, config.ExcelFileName);
                 var measurementTable = CreateMeasurementTable(data);
                 var tablesToExport = new List<PdfDataExtractor.TableData> { measurementTable };
                 
@@ -200,9 +201,8 @@ namespace FileReader
         {
             try
             {
-                // Initialize OPC UA client with Kepware server endpoint
-                // Adjust the endpoint URL according to your Kepware server configuration
-                var opcClient = new OPCUAClient("opc.tcp://localhost:49320");
+                // Initialize OPC UA client with configuration settings
+                var opcClient = new OPCUAClient();
 
                 // Connect to OPC UA server
                 var connected = await opcClient.ConnectAsync();

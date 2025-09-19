@@ -12,13 +12,13 @@ namespace FileReader
         private Session _session;
         private ApplicationConfiguration _configuration;
         private bool _isConnected;
-        private readonly string _endpointUrl;
+        private readonly OpcUaSettings _settings;
 
         public bool IsConnected => _isConnected && _session?.Connected == true;
 
-        public OPCUAClient(string endpointUrl = "opc.tcp://localhost:49320")
+        public OPCUAClient(OpcUaSettings settings = null)
         {
-            _endpointUrl = endpointUrl;
+            _settings = settings ?? ConfigurationManager.Configuration.OpcUaSettings;
             _isConnected = false;
         }
 
@@ -29,7 +29,7 @@ namespace FileReader
                 // Create application configuration
                 _configuration = new ApplicationConfiguration()
                 {
-                    ApplicationName = "PDF Data Extractor OPC UA Client",
+                    ApplicationName = _settings.ApplicationName,
                     ApplicationUri = Utils.Format(@"urn:{0}:PDFDataExtractor", System.Net.Dns.GetHostName()),
                     ApplicationType = ApplicationType.Client,
                     SecurityConfiguration = new SecurityConfiguration
@@ -38,12 +38,12 @@ namespace FileReader
                         TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
                         TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
                         RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
-                        AutoAcceptUntrustedCertificates = true,
+                        AutoAcceptUntrustedCertificates = _settings.AutoAcceptUntrustedCertificates,
                         AddAppCertToTrustedStore = true
                     },
                     TransportConfigurations = new TransportConfigurationCollection(),
-                    TransportQuotas = new TransportQuotas { OperationTimeout = 15000 },
-                    ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = 60000 },
+                    TransportQuotas = new TransportQuotas { OperationTimeout = _settings.OperationTimeout },
+                    ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = _settings.SessionTimeout },
                     TraceConfiguration = new TraceConfiguration()
                 };
 
@@ -54,12 +54,22 @@ namespace FileReader
                 }
 
                 // Discover endpoints
-                var endpointDescription = CoreClientUtils.SelectEndpoint(_endpointUrl, useSecurity: false);
+                var endpointDescription = CoreClientUtils.SelectEndpoint(_settings.EndpointUrl, useSecurity: _settings.UseSecurity);
                 var endpointConfiguration = EndpointConfiguration.Create(_configuration);
                 var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
 
-                // Create session
-                _session = await Session.Create(_configuration, endpoint, false, "PDF Data Extractor Session", 60000, new UserIdentity(new AnonymousIdentityToken()), null);
+                // Create session with user identity
+                UserIdentity userIdentity;
+                if (!string.IsNullOrEmpty(_settings.Username))
+                {
+                    userIdentity = new UserIdentity(_settings.Username, _settings.Password);
+                }
+                else
+                {
+                    userIdentity = new UserIdentity(new AnonymousIdentityToken());
+                }
+
+                _session = await Session.Create(_configuration, endpoint, false, "PDF Data Extractor Session", (uint)_settings.SessionTimeout, userIdentity, null);
 
                 if (_session != null && _session.Connected)
                 {
@@ -219,15 +229,15 @@ namespace FileReader
                 // Extract summary data for writing to OPC UA
                 var summaryData = ExtractSummaryDataForOpcUa(pdfData);
 
-                // Map PDF data to OPC UA nodes (adjust node IDs according to your Kepware server configuration)
+                // Map PDF data to OPC UA nodes using configuration
                 if (!string.IsNullOrEmpty(summaryData.StartedTime) && summaryData.StartedTime != "Not found")
                 {
-                    nodeValues["ns=2;s=PDF.StartedTime"] = summaryData.StartedTime;
+                    nodeValues[_settings.NodeMappings.StartedTime] = summaryData.StartedTime;
                 }
 
                 if (!string.IsNullOrEmpty(summaryData.CompletedTime) && summaryData.CompletedTime != "Not found")
                 {
-                    nodeValues["ns=2;s=PDF.CompletedTime"] = summaryData.CompletedTime;
+                    nodeValues[_settings.NodeMappings.CompletedTime] = summaryData.CompletedTime;
                 }
 
                 if (!string.IsNullOrEmpty(summaryData.SampleMass) && summaryData.SampleMass != "Not found")
@@ -236,7 +246,7 @@ namespace FileReader
                     var massValue = ExtractNumericValue(summaryData.SampleMass);
                     if (massValue.HasValue)
                     {
-                        nodeValues["ns=2;s=PDF.SampleMass"] = massValue.Value;
+                        nodeValues[_settings.NodeMappings.SampleMass] = massValue.Value;
                     }
                 }
 
@@ -246,7 +256,7 @@ namespace FileReader
                     var densityValue = ExtractNumericValue(summaryData.AbsoluteDensity);
                     if (densityValue.HasValue)
                     {
-                        nodeValues["ns=2;s=PDF.AbsoluteDensity"] = densityValue.Value;
+                        nodeValues[_settings.NodeMappings.AbsoluteDensity] = densityValue.Value;
                     }
                 }
 
@@ -258,29 +268,32 @@ namespace FileReader
                     if (measurementTable != null)
                     {
                         measurementCount = measurementTable.Rows.Count;
-                        nodeValues["ns=2;s=PDF.MeasurementCount"] = measurementCount;
+                        nodeValues[_settings.NodeMappings.MeasurementCount] = measurementCount;
 
-                        // Write first few measurement cycle values (adjust as needed)
-                        for (int i = 0; i < Math.Min(measurementTable.Rows.Count, 10); i++)
+                        // Write measurement cycle values using configuration
+                        var maxCycles = Math.Min(measurementTable.Rows.Count, ConfigurationManager.Configuration.ApplicationSettings.MaxMeasurementCycles);
+                        for (int i = 0; i < maxCycles; i++)
                         {
                             if (measurementTable.Rows[i].Count >= 7)
                             {
+                                var cyclePrefix = _settings.NodeMappings.CycleNodePrefix;
+                                
                                 // Cycle number
                                 if (int.TryParse(measurementTable.Rows[i][0], out int cycleNum))
                                 {
-                                    nodeValues[$"ns=2;s=PDF.Cycle{i + 1}.Number"] = cycleNum;
+                                    nodeValues[$"{cyclePrefix}{i + 1}.Number"] = cycleNum;
                                 }
 
                                 // Volume
                                 if (double.TryParse(measurementTable.Rows[i][3], out double volume))
                                 {
-                                    nodeValues[$"ns=2;s=PDF.Cycle{i + 1}.Volume"] = volume;
+                                    nodeValues[$"{cyclePrefix}{i + 1}.Volume"] = volume;
                                 }
 
                                 // Density
                                 if (double.TryParse(measurementTable.Rows[i][5], out double density))
                                 {
-                                    nodeValues[$"ns=2;s=PDF.Cycle{i + 1}.Density"] = density;
+                                    nodeValues[$"{cyclePrefix}{i + 1}.Density"] = density;
                                 }
                             }
                         }
@@ -288,7 +301,7 @@ namespace FileReader
                 }
 
                 // Write timestamp of data extraction
-                nodeValues["ns=2;s=PDF.LastExtracted"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                nodeValues[_settings.NodeMappings.LastExtracted] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
                 // Write all values to OPC UA server
                 return WriteMultipleValues(nodeValues);
