@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using System.Threading.Tasks;
 
 namespace FileReader
 {
@@ -13,13 +14,29 @@ namespace FileReader
         {
             try
             {
+                MainAsync(args).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Silent error handling - application exits
+            }
+        }
+
+        static async Task MainAsync(string[] args)
+        {
+            try
+            {
                 var filePath = GetPdfFilePath();
                 if (string.IsNullOrEmpty(filePath)) return;
 
                 var extractor = new PdfDataExtractor();
                 var data = extractor.ExtractDataFromPdf(filePath);
                 
+                // Create Excel file
                 CreateExcelFile(data);
+                
+                // Write data to OPC UA server
+                await WriteToOpcUaAsync(data);
             }
             catch
             {
@@ -176,6 +193,31 @@ namespace FileReader
             catch
             {
                 return string.Empty;
+            }
+        }
+
+        static async Task WriteToOpcUaAsync(PdfDataExtractor.ExtractedData data)
+        {
+            try
+            {
+                // Initialize OPC UA client with Kepware server endpoint
+                // Adjust the endpoint URL according to your Kepware server configuration
+                var opcClient = new OPCUAClient("opc.tcp://localhost:49320");
+
+                // Connect to OPC UA server
+                var connected = await opcClient.ConnectAsync();
+                if (connected)
+                {
+                    // Write PDF data to OPC UA nodes
+                    opcClient.WritePdfDataToOpcUa(data);
+                    
+                    // Disconnect from server
+                    await opcClient.DisconnectAsync();
+                }
+            }
+            catch
+            {
+                // Silent error handling - OPC UA operations are optional
             }
         }
     }
