@@ -20,6 +20,7 @@ namespace FileReader
         public bool UseSecurity { get; set; } = false;
         public string Username { get; set; } = "";
         public string Password { get; set; } = "";
+        public string PreferredAuthenticationType { get; set; } = "Anonymous";
         public NodeMappings NodeMappings { get; set; } = new NodeMappings();
     }
 

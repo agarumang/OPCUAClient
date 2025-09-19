@@ -171,7 +171,19 @@ namespace FileReader
                     Console.WriteLine($"   ✅ Found {endpoints.Count} endpoint(s):");
                     foreach (var endpoint in endpoints)
                     {
-                        Console.WriteLine($"      - {endpoint.EndpointUrl} ({endpoint.SecurityPolicyUri})");
+                        Console.WriteLine($"      - {endpoint.EndpointUrl}");
+                        Console.WriteLine($"        Security: {endpoint.SecurityPolicyUri}");
+                        Console.WriteLine($"        Security Mode: {endpoint.SecurityMode}");
+                        
+                        if (endpoint.UserIdentityTokens != null && endpoint.UserIdentityTokens.Count > 0)
+                        {
+                            Console.WriteLine($"        Supported Authentication:");
+                            foreach (var token in endpoint.UserIdentityTokens)
+                            {
+                                Console.WriteLine($"          • {token.TokenType} ({token.PolicyId})");
+                            }
+                        }
+                        Console.WriteLine();
                     }
                     return true;
                 }

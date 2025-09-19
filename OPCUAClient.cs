@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -97,16 +98,8 @@ namespace FileReader
                 var endpointConfiguration = EndpointConfiguration.Create(_configuration);
                 var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
 
-                // Create session with user identity
-                UserIdentity userIdentity;
-                if (!string.IsNullOrEmpty(_settings.Username))
-                {
-                    userIdentity = new UserIdentity(_settings.Username, _settings.Password);
-                }
-                else
-                {
-                    userIdentity = new UserIdentity(new AnonymousIdentityToken());
-                }
+                // Create session with compatible user identity
+                UserIdentity userIdentity = await SelectCompatibleUserIdentity(endpoint);
 
                 _session = await Session.Create(_configuration, endpoint, false, "PDF Data Extractor Session", (uint)_settings.SessionTimeout, userIdentity, null);
 
@@ -417,6 +410,94 @@ namespace FileReader
                 ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = _settings.SessionTimeout },
                 TraceConfiguration = new TraceConfiguration()
             };
+        }
+
+        private async Task<UserIdentity> SelectCompatibleUserIdentity(ConfiguredEndpoint endpoint)
+        {
+            try
+            {
+                // Get supported user identity types from the endpoint
+                var endpointDescription = endpoint.Description;
+                var supportedTokens = endpointDescription.UserIdentityTokens;
+                
+                Console.WriteLine($"Endpoint supports {supportedTokens.Count} user identity types:");
+                foreach (var token in supportedTokens)
+                {
+                    Console.WriteLine($"  - {token.TokenType}: {token.PolicyId}");
+                }
+
+                // Priority order: Anonymous -> Username -> Certificate -> IssuedToken
+                
+                // 1. Try Anonymous first (most common for development)
+                foreach (var token in supportedTokens)
+                {
+                    if (token.TokenType == UserTokenType.Anonymous)
+                    {
+                        Console.WriteLine("Using Anonymous authentication");
+                        return new UserIdentity(new AnonymousIdentityToken());
+                    }
+                }
+
+                // 2. Try Username if credentials are provided
+                if (!string.IsNullOrEmpty(_settings.Username))
+                {
+                    foreach (var token in supportedTokens)
+                    {
+                        if (token.TokenType == UserTokenType.UserName)
+                        {
+                            Console.WriteLine($"Using Username authentication: {_settings.Username}");
+                            return new UserIdentity(_settings.Username, _settings.Password);
+                        }
+                    }
+                }
+
+                // 3. Try Certificate authentication if available
+                foreach (var token in supportedTokens)
+                {
+                    if (token.TokenType == UserTokenType.Certificate && _configuration.SecurityConfiguration.ApplicationCertificate != null)
+                    {
+                        var cert = await _configuration.SecurityConfiguration.ApplicationCertificate.Find(true);
+                        if (cert != null)
+                        {
+                            Console.WriteLine("Using Certificate authentication");
+                            return new UserIdentity(cert);
+                        }
+                    }
+                }
+
+                // 4. Fallback to the first available token type
+                if (supportedTokens.Count > 0)
+                {
+                    var firstToken = supportedTokens[0];
+                    Console.WriteLine($"Using fallback authentication: {firstToken.TokenType}");
+                    
+                    switch (firstToken.TokenType)
+                    {
+                        case UserTokenType.Anonymous:
+                            return new UserIdentity(new AnonymousIdentityToken());
+                        
+                        case UserTokenType.UserName:
+                            if (!string.IsNullOrEmpty(_settings.Username))
+                                return new UserIdentity(_settings.Username, _settings.Password);
+                            else
+                                return new UserIdentity("", ""); // Empty credentials
+                        
+                        default:
+                            // Default to anonymous
+                            return new UserIdentity(new AnonymousIdentityToken());
+                    }
+                }
+
+                // Ultimate fallback
+                Console.WriteLine("No supported user identity types found, using Anonymous");
+                return new UserIdentity(new AnonymousIdentityToken());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error selecting user identity: {ex.Message}");
+                Console.WriteLine("Defaulting to Anonymous authentication");
+                return new UserIdentity(new AnonymousIdentityToken());
+            }
         }
 
         public void Dispose()
