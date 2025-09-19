@@ -1,0 +1,182 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace FileReader
+{
+    class Program
+    {
+        [STAThread]
+        static void Main(string[] args)
+        {
+            try
+            {
+                var filePath = GetPdfFilePath();
+                if (string.IsNullOrEmpty(filePath)) return;
+
+                var extractor = new PdfDataExtractor();
+                var data = extractor.ExtractDataFromPdf(filePath);
+                
+                CreateExcelFile(data);
+            }
+            catch
+            {
+                // Silent error handling - application exits
+            }
+        }
+
+        static void CreateExcelFile(PdfDataExtractor.ExtractedData data)
+        {
+            try
+            {
+                var currentDirectory = Directory.GetCurrentDirectory();
+                var excelFolderPath = Path.Combine(currentDirectory, "excel");
+                
+                if (!Directory.Exists(excelFolderPath))
+                {
+                    Directory.CreateDirectory(excelFolderPath);
+                }
+
+                var excelPath = Path.Combine(excelFolderPath, "ExtractedExcel.xlsx");
+                var measurementTable = CreateMeasurementTable(data);
+                var tablesToExport = new List<PdfDataExtractor.TableData> { measurementTable };
+                
+                if (data.Tables.Any())
+                {
+                    tablesToExport.AddRange(data.Tables);
+                }
+
+                var extractor = new PdfDataExtractor();
+                extractor.ExportTablesToExcel(tablesToExport, excelPath, data);
+            }
+            catch
+            {
+                // Silent error handling
+            }
+        }
+
+        static PdfDataExtractor.TableData CreateMeasurementTable(PdfDataExtractor.ExtractedData data)
+        {
+            var extractedRows = ExtractMeasurementCyclesFromText(data.FullText);
+            
+            return new PdfDataExtractor.TableData
+            {
+                TableName = "Measurement Cycles",
+                Headers = new List<string> { "Cycle #", "Blank (counts)", "Sample (counts)", "Volume (cm³)", "Deviation (cm³)", "Density (g/cm³)", "Deviation (g/cm³)" },
+                Rows = extractedRows
+            };
+        }
+
+        static List<List<string>> ExtractMeasurementCyclesFromText(string text)
+        {
+            var rows = new List<List<string>>();
+            
+            try
+            {
+                var lines = text.Split(new char[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                bool inTable = false;
+                bool foundHeader = false;
+                
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var trimmedLine = lines[i].Trim();
+                    
+                    if (trimmedLine.Contains("Cycle") && trimmedLine.Contains("#"))
+                    {
+                        for (int j = i + 1; j < Math.Min(i + 10, lines.Length); j++)
+                        {
+                            var nextLine = lines[j].Trim();
+                            if (nextLine.Contains("Deviation") && nextLine.Contains("g/cm³"))
+                            {
+                                foundHeader = true;
+                                inTable = true;
+                                i = j;
+                                break;
+                            }
+                        }
+                        
+                        if (foundHeader) continue;
+                    }
+                    
+                    if (inTable)
+                    {
+                        var dataRowPattern = @"^(\d+)\s+(\d+)\s+(\d+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)";
+                        var match = System.Text.RegularExpressions.Regex.Match(trimmedLine, dataRowPattern);
+                        
+                        if (match.Success)
+                        {
+                            var row = new List<string>();
+                            for (int g = 1; g <= 7; g++)
+                            {
+                                if (g < match.Groups.Count)
+                                {
+                                    row.Add(match.Groups[g].Value.Trim());
+                                }
+                            }
+                            
+                            if (row.Count == 7)
+                            {
+                                rows.Add(row);
+                            }
+                        }
+                        else if (rows.Count > 0 && (string.IsNullOrWhiteSpace(trimmedLine) || 
+                                 trimmedLine.Contains("Cycle #") || 
+                                 trimmedLine.Contains("Density (g/cm³)")))
+                        {
+                            break;
+                        }
+                    }
+                }
+                
+                if (rows.Count == 0)
+                {
+                    foreach (var line in lines)
+                    {
+                        var trimmedLine = line.Trim();
+                        var simplePattern = @"^(\d+)\s+(\d+)\s+(\d+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)$";
+                        var match = System.Text.RegularExpressions.Regex.Match(trimmedLine, simplePattern);
+                        
+                        if (match.Success)
+                        {
+                            var row = new List<string>();
+                            for (int g = 1; g <= 7; g++)
+                            {
+                                row.Add(match.Groups[g].Value.Trim());
+                            }
+                            rows.Add(row);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Silent error handling
+            }
+            
+            return rows;
+        }
+
+        static string GetPdfFilePath()
+        {
+            try
+            {
+                using (var openFileDialog = new OpenFileDialog())
+                {
+                    openFileDialog.Title = "Select PDF File";
+                    openFileDialog.Filter = "PDF Files (*.pdf)|*.pdf";
+                    openFileDialog.CheckFileExists = true;
+                    openFileDialog.CheckPathExists = true;
+                    openFileDialog.Multiselect = false;
+
+                    return openFileDialog.ShowDialog() == DialogResult.OK ? openFileDialog.FileName : string.Empty;
+                }
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+    }
+}
