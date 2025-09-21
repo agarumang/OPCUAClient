@@ -78,6 +78,7 @@ namespace FileReader
         {
             var tables = new List<TableData>();
             
+            // Look for measurement cycle data - the headers might be split across lines
             if (text.Contains("Cycle") && text.Contains("Blank") && text.Contains("Sample") && text.Contains("Volume") && text.Contains("Density"))
             {
                 var table = new TableData
@@ -87,31 +88,35 @@ namespace FileReader
                 };
 
                 var lines = text.Split('\n');
-                bool inTable = false;
+                bool foundHeaders = false;
                 
                 for (int i = 0; i < lines.Length; i++)
                 {
                     var line = lines[i].Trim();
                     
-                    if (line.Contains("Cycle") && line.Contains("Blank") && line.Contains("Sample"))
+                    // Look for the start of measurement data - lines that start with a number followed by measurement values
+                    // Pattern: number followed by 6 more numbers (some may be negative)
+                    var match = Regex.Match(line, @"^\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*$");
+                    if (match.Success)
                     {
-                        inTable = true;
-                        continue;
-                    }
-                    
-                    if (inTable)
-                    {
-                        var match = Regex.Match(line, @"^\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)");
-                        if (match.Success)
+                        foundHeaders = true; // We found data, so we know we're in the right section
+                        var row = new List<string>();
+                        for (int j = 1; j <= 7; j++)
                         {
-                            var row = new List<string>();
-                            for (int j = 1; j <= 7; j++)
-                            {
-                                row.Add(match.Groups[j].Value.Trim());
-                            }
-                            table.Rows.Add(row);
+                            row.Add(match.Groups[j].Value.Trim());
                         }
-                        else if (line.Length == 0 && table.Rows.Count > 0)
+                        table.Rows.Add(row);
+                    }
+                    else if (foundHeaders && table.Rows.Count > 0)
+                    {
+                        // Check if we've reached the end of the table (empty line or non-matching content)
+                        if (string.IsNullOrWhiteSpace(line) || line.Contains("Cycle #") || line.Contains("Density (g/cm3)"))
+                        {
+                            // We might be at the end, but let's continue a bit more to catch all rows
+                            continue;
+                        }
+                        // If we encounter something that clearly isn't a data row and we have data, we're done
+                        if (!Regex.IsMatch(line, @"^\s*\d+\s+[\d.-]+") && table.Rows.Count >= 5)
                         {
                             break;
                         }
