@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Opc.Ua;
 using Opc.Ua.Client;
@@ -12,100 +11,69 @@ namespace FileReader
     {
         private Session _session;
         private ApplicationConfiguration _configuration;
-        private bool _isConnected;
         private readonly OpcUaSettings _settings;
 
-        public bool IsConnected => _isConnected && _session?.Connected == true;
+        public bool IsConnected => _session?.Connected == true;
 
-        public OPCUAClient(OpcUaSettings settings = null)
+        public OPCUAClient()
         {
-            _settings = settings ?? ConfigurationManager.Configuration.OpcUaSettings;
-            _isConnected = false;
+            _settings = ConfigurationManager.Configuration.OpcUaSettings;
         }
 
         public async Task<bool> ConnectAsync()
         {
             try
             {
-                // Ensure certificates exist before creating configuration
-                var certSetupResult = await CertificateManager.EnsureCertificatesExistAsync();
-                if (!certSetupResult)
-                {
-                    Console.WriteLine("⚠️ Certificate setup failed, trying to continue with minimal configuration...");
-                }
-
-                // Create application configuration with local certificate stores
-                var appDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-                
+                // Simple application configuration
                 _configuration = new ApplicationConfiguration()
                 {
                     ApplicationName = _settings.ApplicationName,
-                    ApplicationUri = Utils.Format(@"urn:{0}:PDFDataExtractor", Environment.MachineName),
                     ApplicationType = ApplicationType.Client,
                     SecurityConfiguration = new SecurityConfiguration
                     {
-                        ApplicationCertificate = new CertificateIdentifier 
-                        { 
-                            StoreType = @"Directory", 
-                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "Own"),
-                            SubjectName = Utils.Format(@"CN={0}, DC={1}", _settings.ApplicationName, Environment.MachineName)
+                        ApplicationCertificate = new CertificateIdentifier(),
+                        AutoAcceptUntrustedCertificates = true,
+                        AddAppCertToTrustedStore = true,
+                        TrustedIssuerCertificates = new CertificateTrustList
+                        {
+                            StoreType = "Directory",
+                            StorePath = "OPC Foundation/CertificateStores/UA Certificate Authorities"
                         },
-                        TrustedIssuerCertificates = new CertificateTrustList 
-                        { 
-                            StoreType = @"Directory", 
-                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "TrustedIssuers")
+                        TrustedPeerCertificates = new CertificateTrustList
+                        {
+                            StoreType = "Directory",
+                            StorePath = "OPC Foundation/CertificateStores/UA Applications"
                         },
-                        TrustedPeerCertificates = new CertificateTrustList 
-                        { 
-                            StoreType = @"Directory", 
-                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "TrustedPeers")
-                        },
-                        RejectedCertificateStore = new CertificateTrustList 
-                        { 
-                            StoreType = @"Directory", 
-                            StorePath = System.IO.Path.Combine(appDir, "Certificates", "Rejected")
-                        },
-                        AutoAcceptUntrustedCertificates = _settings.AutoAcceptUntrustedCertificates,
-                        AddAppCertToTrustedStore = true
+                        RejectedCertificateStore = new CertificateTrustList
+                        {
+                            StoreType = "Directory",
+                            StorePath = "OPC Foundation/CertificateStores/RejectedCertificates"
+                        }
                     },
-                    TransportConfigurations = new TransportConfigurationCollection(),
-                    TransportQuotas = new TransportQuotas { OperationTimeout = _settings.OperationTimeout },
-                    ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = _settings.SessionTimeout },
-                    TraceConfiguration = new TraceConfiguration()
+                    ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = _settings.SessionTimeout }
                 };
 
-                try
-                {
-                    await _configuration.Validate(ApplicationType.Client);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"⚠️ Configuration validation failed: {ex.Message}");
-                    Console.WriteLine("Trying with minimal security configuration...");
-                    
-                    // Fallback to minimal configuration
-                    _configuration = CreateMinimalConfiguration();
-                    await _configuration.Validate(ApplicationType.Client);
-                }
-                
-                if (_configuration.SecurityConfiguration.AutoAcceptUntrustedCertificates)
-                {
-                    _configuration.CertificateValidator.CertificateValidation += (s, e) => { e.Accept = (e.Error.StatusCode == StatusCodes.BadCertificateUntrusted); };
-                }
+                await _configuration.Validate(ApplicationType.Client);
 
-                // Discover endpoints
-                var endpointDescription = CoreClientUtils.SelectEndpoint(_settings.EndpointUrl, useSecurity: _settings.UseSecurity);
+                // Connect to endpoint
+                var selectedEndpoint = CoreClientUtils.SelectEndpoint(_settings.EndpointUrl, useSecurity: false);
                 var endpointConfiguration = EndpointConfiguration.Create(_configuration);
-                var endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
+                var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
 
-                // Create session with compatible user identity
-                UserIdentity userIdentity = await SelectCompatibleUserIdentity(endpoint);
+                // Create session
+                _session = await Session.Create(
+                    _configuration,
+                    endpoint,
+                    false,
+                    "FileReader Session",
+                    (uint)_settings.SessionTimeout,
+                    null,
+                    null
+                );
 
-                _session = await Session.Create(_configuration, endpoint, false, "PDF Data Extractor Session", (uint)_settings.SessionTimeout, userIdentity, null);
-
-                if (_session != null && _session.Connected)
+                if (_session?.Connected == true)
                 {
-                    _isConnected = true;
+                    Console.WriteLine("✅ Connected to OPC UA Server!");
                     return true;
                 }
 
@@ -113,7 +81,8 @@ namespace FileReader
             }
             catch (Exception ex)
             {
-                throw new Exception($"Failed to connect to OPC UA server: {ex.Message}", ex);
+                Console.WriteLine($"❌ Connection failed: {ex.Message}");
+                return false;
             }
         }
 
@@ -127,20 +96,16 @@ namespace FileReader
                     _session.Dispose();
                     _session = null;
                 }
-                _isConnected = false;
             }
             catch (Exception ex)
             {
-                throw new Exception($"Error during disconnect: {ex.Message}", ex);
+                Console.WriteLine($"⚠️ Disconnect error: {ex.Message}");
             }
         }
 
         public bool WriteValue(string nodeId, object value)
         {
-            if (!IsConnected)
-            {
-                throw new InvalidOperationException("OPC UA client is not connected");
-            }
+            if (!IsConnected) return false;
 
             try
             {
@@ -151,74 +116,55 @@ namespace FileReader
                     Value = new DataValue(new Variant(value))
                 };
 
-                var writeValueCollection = new WriteValueCollection { writeValue };
-                StatusCodeCollection results;
-                DiagnosticInfoCollection diagnosticInfos;
-                
-                _session.Write(null, writeValueCollection, out results, out diagnosticInfos);
+                var writeValues = new WriteValueCollection { writeValue };
+                _session.Write(null, writeValues, out StatusCodeCollection results, out DiagnosticInfoCollection diagnostics);
 
-                return results != null && results.Count > 0 && StatusCode.IsGood(results[0]);
+                return results?.Count > 0 && StatusCode.IsGood(results[0]);
             }
             catch (Exception ex)
             {
-                throw new Exception($"Failed to write value to node {nodeId}: {ex.Message}", ex);
+                Console.WriteLine($"⚠️ Write failed for {nodeId}: {ex.Message}");
+                return false;
             }
         }
 
-        public bool WriteMultipleValues(Dictionary<string, object> nodeValues)
+        public bool WriteDoubleArray(string nodeId, double[] values)
         {
-            if (!IsConnected)
-            {
-                throw new InvalidOperationException("OPC UA client is not connected");
-            }
+            if (!IsConnected) return false;
 
             try
             {
-                var writeValueCollection = new WriteValueCollection();
-
-                foreach (var kvp in nodeValues)
+                var writeValue = new WriteValue
                 {
-                    var writeValue = new WriteValue()
-                    {
-                        NodeId = new NodeId(kvp.Key),
-                        AttributeId = Attributes.Value,
-                        Value = new DataValue(new Variant(kvp.Value))
-                    };
-                    writeValueCollection.Add(writeValue);
-                }
+                    NodeId = new NodeId(nodeId),
+                    AttributeId = Attributes.Value,
+                    Value = new DataValue(new Variant(values))
+                };
 
-                StatusCodeCollection results;
-                DiagnosticInfoCollection diagnosticInfos;
-                
-                _session.Write(null, writeValueCollection, out results, out diagnosticInfos);
+                var writeValues = new WriteValueCollection { writeValue };
+                _session.Write(null, writeValues, out StatusCodeCollection results, out DiagnosticInfoCollection diagnostics);
 
-                // Check if all writes were successful
-                if (results != null && results.Count == nodeValues.Count)
+                if (results?.Count > 0 && StatusCode.IsGood(results[0]))
                 {
-                    foreach (var result in results)
-                    {
-                        if (!StatusCode.IsGood(result))
-                        {
-                            return false;
-                        }
-                    }
+                    Console.WriteLine("✅ Double array written successfully!");
                     return true;
                 }
-
-                return false;
+                else
+                {
+                    Console.WriteLine($"❌ Array write failed: {results?[0]}");
+                    return false;
+                }
             }
             catch (Exception ex)
             {
-                throw new Exception($"Failed to write multiple values: {ex.Message}", ex);
+                Console.WriteLine($"⚠️ Array write failed for {nodeId}: {ex.Message}");
+                return false;
             }
         }
 
         public object ReadValue(string nodeId)
         {
-            if (!IsConnected)
-            {
-                throw new InvalidOperationException("OPC UA client is not connected");
-            }
+            if (!IsConnected) return null;
 
             try
             {
@@ -228,13 +174,10 @@ namespace FileReader
                     AttributeId = Attributes.Value
                 };
 
-                var readValueCollection = new ReadValueIdCollection { readValue };
-                DataValueCollection results;
-                DiagnosticInfoCollection diagnosticInfos;
-                
-                _session.Read(null, 0, TimestampsToReturn.Neither, readValueCollection, out results, out diagnosticInfos);
+                var readValues = new ReadValueIdCollection { readValue };
+                _session.Read(null, 0, TimestampsToReturn.Neither, readValues, out DataValueCollection results, out DiagnosticInfoCollection diagnostics);
 
-                if (results != null && results.Count > 0 && StatusCode.IsGood(results[0].StatusCode))
+                if (results?.Count > 0 && StatusCode.IsGood(results[0].StatusCode))
                 {
                     return results[0].Value;
                 }
@@ -243,142 +186,151 @@ namespace FileReader
             }
             catch (Exception ex)
             {
-                throw new Exception($"Failed to read value from node {nodeId}: {ex.Message}", ex);
+                Console.WriteLine($"⚠️ Read failed for {nodeId}: {ex.Message}");
+                return null;
+            }
+        }
+
+        public void BrowseRootFolder()
+        {
+            if (!IsConnected) return;
+
+            try
+            {
+                _session.Browse(
+                    null, null, ObjectIds.ObjectsFolder, 0u, BrowseDirection.Forward,
+                    ReferenceTypeIds.HierarchicalReferences, true,
+                    (uint)NodeClass.Variable | (uint)NodeClass.Object | (uint)NodeClass.Method,
+                    out byte[] cp, out ReferenceDescriptionCollection refs);
+
+                Console.WriteLine("Available OPC UA nodes:");
+                foreach (var reference in refs)
+                {
+                    Console.WriteLine($" - {reference.DisplayName} ({reference.NodeClass})");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Browse failed: {ex.Message}");
             }
         }
 
         public bool WritePdfDataToOpcUa(PdfDataExtractor.ExtractedData pdfData)
         {
-            if (!IsConnected)
-            {
-                return false;
-            }
+            if (!IsConnected) return false;
 
             try
             {
-                var nodeValues = new Dictionary<string, object>();
+                var success = true;
 
-                // Extract summary data for writing to OPC UA
-                var summaryData = ExtractSummaryDataForOpcUa(pdfData);
+                // Write basic PDF data
+                var summaryData = ExtractSummaryData(pdfData);
+                
+                if (!string.IsNullOrEmpty(summaryData.StartedTime))
+                    success &= WriteValue(_settings.NodeMappings.StartedTime, summaryData.StartedTime);
+                
+                if (!string.IsNullOrEmpty(summaryData.CompletedTime))
+                    success &= WriteValue(_settings.NodeMappings.CompletedTime, summaryData.CompletedTime);
 
-                // Map PDF data to OPC UA nodes using configuration
-                if (!string.IsNullOrEmpty(summaryData.StartedTime) && summaryData.StartedTime != "Not found")
+                // Extract and write sample mass and absolute density if available
+                if (!string.IsNullOrEmpty(summaryData.SampleMass))
                 {
-                    nodeValues[_settings.NodeMappings.StartedTime] = summaryData.StartedTime;
-                }
-
-                if (!string.IsNullOrEmpty(summaryData.CompletedTime) && summaryData.CompletedTime != "Not found")
-                {
-                    nodeValues[_settings.NodeMappings.CompletedTime] = summaryData.CompletedTime;
-                }
-
-                if (!string.IsNullOrEmpty(summaryData.SampleMass) && summaryData.SampleMass != "Not found")
-                {
-                    // Extract numeric value from "X.XXXX g" format
                     var massValue = ExtractNumericValue(summaryData.SampleMass);
                     if (massValue.HasValue)
-                    {
-                        nodeValues[_settings.NodeMappings.SampleMass] = massValue.Value;
-                    }
+                        success &= WriteValue(_settings.NodeMappings.SampleMass, massValue.Value.ToString());
                 }
 
-                if (!string.IsNullOrEmpty(summaryData.AbsoluteDensity) && summaryData.AbsoluteDensity != "Not found")
+                if (!string.IsNullOrEmpty(summaryData.AbsoluteDensity))
                 {
-                    // Extract numeric value from "X.XXXX g/cm³" format
                     var densityValue = ExtractNumericValue(summaryData.AbsoluteDensity);
                     if (densityValue.HasValue)
-                    {
-                        nodeValues[_settings.NodeMappings.AbsoluteDensity] = densityValue.Value;
-                    }
+                        success &= WriteValue(_settings.NodeMappings.AbsoluteDensity, densityValue.Value.ToString());
                 }
 
-                // Write measurement cycles count
-                var measurementCount = 0;
-                if (pdfData.Tables != null && pdfData.Tables.Count > 0)
+                // Write measurement cycle data as comma-separated strings
+                var measurementTable = pdfData.Tables?.Find(t => t.TableName.Contains("Measurement"));
+                if (measurementTable?.Rows?.Count > 0)
                 {
-                    var measurementTable = pdfData.Tables.Find(t => t.TableName.Contains("Measurement"));
-                    if (measurementTable != null)
+                    Console.WriteLine($"Found {measurementTable.Rows.Count} measurement rows to write");
+                    
+                    // Write up to 10 measurement rows to cycle_row1 through cycle_row10
+                    var maxRows = Math.Min(measurementTable.Rows.Count, 10);
+                    
+                    for (int i = 0; i < maxRows; i++)
                     {
-                        measurementCount = measurementTable.Rows.Count;
-                        nodeValues[_settings.NodeMappings.MeasurementCount] = measurementCount;
-
-                        // Write measurement cycle values using configuration
-                        var maxCycles = Math.Min(measurementTable.Rows.Count, ConfigurationManager.Configuration.ApplicationSettings.MaxMeasurementCycles);
-                        for (int i = 0; i < maxCycles; i++)
+                        if (measurementTable.Rows[i].Count >= 7)
                         {
-                            if (measurementTable.Rows[i].Count >= 7)
+                            // Create comma-separated string: "Cycle#,Blank,Sample,Volume,VolumeDeviation,Density,DensityDeviation"
+                            var rowData = string.Join(",", measurementTable.Rows[i]);
+                            
+                            // Get the appropriate cycle row tag
+                            string cycleRowNodeId = GetCycleRowNodeId(i + 1);
+                            if (!string.IsNullOrEmpty(cycleRowNodeId))
                             {
-                                var cyclePrefix = _settings.NodeMappings.CycleNodePrefix;
-                                
-                                // Cycle number
-                                if (int.TryParse(measurementTable.Rows[i][0], out int cycleNum))
-                                {
-                                    nodeValues[$"{cyclePrefix}{i + 1}.Number"] = cycleNum;
-                                }
-
-                                // Volume
-                                if (double.TryParse(measurementTable.Rows[i][3], out double volume))
-                                {
-                                    nodeValues[$"{cyclePrefix}{i + 1}.Volume"] = volume;
-                                }
-
-                                // Density
-                                if (double.TryParse(measurementTable.Rows[i][5], out double density))
-                                {
-                                    nodeValues[$"{cyclePrefix}{i + 1}.Density"] = density;
-                                }
+                                success &= WriteValue(cycleRowNodeId, rowData);
+                                Console.WriteLine($"✅ Written to cycle_row{i + 1}: {rowData}");
                             }
+                        }
+                    }
+
+                    // Also write the first row as a double array to Data_import tag for compatibility
+                    if (measurementTable.Rows[0].Count >= 7)
+                    {
+                        var values = new List<double>();
+                        for (int i = 1; i < 7; i++) // Skip cycle number, take next 6 values
+                        {
+                            if (double.TryParse(measurementTable.Rows[0][i], out double val))
+                                values.Add(val);
+                        }
+
+                        if (values.Count == 6)
+                        {
+                            success &= WriteDoubleArray(_settings.NodeMappings.DataImportArray, values.ToArray());
+                            Console.WriteLine($"✅ Written double array to Data_import: [{string.Join(", ", values)}]");
                         }
                     }
                 }
 
-                // Write timestamp of data extraction
-                nodeValues[_settings.NodeMappings.LastExtracted] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
-                // Write all values to OPC UA server
-                return WriteMultipleValues(nodeValues);
+                return success;
             }
             catch (Exception ex)
             {
-                throw new Exception($"Failed to write PDF data to OPC UA: {ex.Message}", ex);
+                Console.WriteLine($"⚠️ PDF data write failed: {ex.Message}");
+                return false;
             }
         }
 
-        private PdfDataExtractor.SummaryData ExtractSummaryDataForOpcUa(PdfDataExtractor.ExtractedData data)
+        private PdfDataExtractor.SummaryData ExtractSummaryData(PdfDataExtractor.ExtractedData data)
         {
             var summary = new PdfDataExtractor.SummaryData();
 
+            // Extract started time
             var startedMatch = System.Text.RegularExpressions.Regex.Match(data.FullText,
                 @"Started[:\s]*([A-Za-z]{3}\s+\d{1,2},?\s+\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (startedMatch.Success)
-            {
                 summary.StartedTime = startedMatch.Groups[1].Value.Trim();
-            }
 
+            // Extract completed time
             var completedMatch = System.Text.RegularExpressions.Regex.Match(data.FullText,
                 @"Completed[:\s]*([A-Za-z]{3}\s+\d{1,2},?\s+\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (completedMatch.Success)
-            {
                 summary.CompletedTime = completedMatch.Groups[1].Value.Trim();
-            }
 
+            // Extract sample mass
             var massMatch = System.Text.RegularExpressions.Regex.Match(data.FullText,
                 @"Sample\s+mass[:\s]*(\d+(?:\.\d+)?)\s*g",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (massMatch.Success)
-            {
                 summary.SampleMass = massMatch.Groups[1].Value.Trim() + " g";
-            }
 
+            // Extract absolute density
             var densityMatch = System.Text.RegularExpressions.Regex.Match(data.FullText,
                 @"Absolute\s+density[:\s]*(\d+(?:\.\d+)?)\s*g/cm³",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (densityMatch.Success)
-            {
                 summary.AbsoluteDensity = densityMatch.Groups[1].Value.Trim() + " g/cm³";
-            }
 
             return summary;
         }
@@ -393,110 +345,21 @@ namespace FileReader
             return null;
         }
 
-        private ApplicationConfiguration CreateMinimalConfiguration()
+        private string GetCycleRowNodeId(int rowNumber)
         {
-            return new ApplicationConfiguration()
+            switch (rowNumber)
             {
-                ApplicationName = _settings.ApplicationName,
-                ApplicationUri = Utils.Format(@"urn:{0}:PDFDataExtractor", Environment.MachineName),
-                ApplicationType = ApplicationType.Client,
-                SecurityConfiguration = new SecurityConfiguration
-                {
-                    AutoAcceptUntrustedCertificates = true,
-                    AddAppCertToTrustedStore = false
-                },
-                TransportConfigurations = new TransportConfigurationCollection(),
-                TransportQuotas = new TransportQuotas { OperationTimeout = _settings.OperationTimeout },
-                ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = _settings.SessionTimeout },
-                TraceConfiguration = new TraceConfiguration()
-            };
-        }
-
-        private async Task<UserIdentity> SelectCompatibleUserIdentity(ConfiguredEndpoint endpoint)
-        {
-            try
-            {
-                // Get supported user identity types from the endpoint
-                var endpointDescription = endpoint.Description;
-                var supportedTokens = endpointDescription.UserIdentityTokens;
-                
-                Console.WriteLine($"Endpoint supports {supportedTokens.Count} user identity types:");
-                foreach (var token in supportedTokens)
-                {
-                    Console.WriteLine($"  - {token.TokenType}: {token.PolicyId}");
-                }
-
-                // Priority order: Anonymous -> Username -> Certificate -> IssuedToken
-                
-                // 1. Try Anonymous first (most common for development)
-                foreach (var token in supportedTokens)
-                {
-                    if (token.TokenType == UserTokenType.Anonymous)
-                    {
-                        Console.WriteLine("Using Anonymous authentication");
-                        return new UserIdentity(new AnonymousIdentityToken());
-                    }
-                }
-
-                // 2. Try Username if credentials are provided
-                if (!string.IsNullOrEmpty(_settings.Username))
-                {
-                    foreach (var token in supportedTokens)
-                    {
-                        if (token.TokenType == UserTokenType.UserName)
-                        {
-                            Console.WriteLine($"Using Username authentication: {_settings.Username}");
-                            return new UserIdentity(_settings.Username, _settings.Password);
-                        }
-                    }
-                }
-
-                // 3. Try Certificate authentication if available
-                foreach (var token in supportedTokens)
-                {
-                    if (token.TokenType == UserTokenType.Certificate && _configuration.SecurityConfiguration.ApplicationCertificate != null)
-                    {
-                        var cert = await _configuration.SecurityConfiguration.ApplicationCertificate.Find(true);
-                        if (cert != null)
-                        {
-                            Console.WriteLine("Using Certificate authentication");
-                            return new UserIdentity(cert);
-                        }
-                    }
-                }
-
-                // 4. Fallback to the first available token type
-                if (supportedTokens.Count > 0)
-                {
-                    var firstToken = supportedTokens[0];
-                    Console.WriteLine($"Using fallback authentication: {firstToken.TokenType}");
-                    
-                    switch (firstToken.TokenType)
-                    {
-                        case UserTokenType.Anonymous:
-                            return new UserIdentity(new AnonymousIdentityToken());
-                        
-                        case UserTokenType.UserName:
-                            if (!string.IsNullOrEmpty(_settings.Username))
-                                return new UserIdentity(_settings.Username, _settings.Password);
-                            else
-                                return new UserIdentity("", ""); // Empty credentials
-                        
-                        default:
-                            // Default to anonymous
-                            return new UserIdentity(new AnonymousIdentityToken());
-                    }
-                }
-
-                // Ultimate fallback
-                Console.WriteLine("No supported user identity types found, using Anonymous");
-                return new UserIdentity(new AnonymousIdentityToken());
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error selecting user identity: {ex.Message}");
-                Console.WriteLine("Defaulting to Anonymous authentication");
-                return new UserIdentity(new AnonymousIdentityToken());
+                case 1: return _settings.NodeMappings.CycleRow1;
+                case 2: return _settings.NodeMappings.CycleRow2;
+                case 3: return _settings.NodeMappings.CycleRow3;
+                case 4: return _settings.NodeMappings.CycleRow4;
+                case 5: return _settings.NodeMappings.CycleRow5;
+                case 6: return _settings.NodeMappings.CycleRow6;
+                case 7: return _settings.NodeMappings.CycleRow7;
+                case 8: return _settings.NodeMappings.CycleRow8;
+                case 9: return _settings.NodeMappings.CycleRow9;
+                case 10: return _settings.NodeMappings.CycleRow10;
+                default: return null;
             }
         }
 

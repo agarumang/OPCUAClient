@@ -65,19 +65,11 @@ namespace FileReader
         {
             try
             {
-                // Check if certificates exist
-                var appDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-                var certDir = System.IO.Path.Combine(appDir, "Certificates");
-                
-                if (!System.IO.Directory.Exists(certDir) || System.IO.Directory.GetDirectories(certDir).Length == 0)
-                {
-                    // First time setup - create certificates silently
-                    await CertificateManager.EnsureCertificatesExistAsync();
-                }
+                await CertificateManager.EnsureCertificatesExistAsync();
             }
             catch
             {
-                // Silent setup - if it fails, the OPC UA connection will handle it
+                // Silent setup - certificates are optional for basic operation
             }
         }
 
@@ -306,17 +298,18 @@ namespace FileReader
         {
             try
             {
-                // Initialize OPC UA client with configuration settings
                 var opcClient = new OPCUAClient();
-
-                // Connect to OPC UA server
-                var connected = await opcClient.ConnectAsync();
-                if (connected)
+                
+                if (await opcClient.ConnectAsync())
                 {
-                    // Write PDF data to OPC UA nodes
-                    opcClient.WritePdfDataToOpcUa(data);
+                    opcClient.BrowseRootFolder();
+                    var success = opcClient.WritePdfDataToOpcUa(data);
                     
-                    // Disconnect from server
+                    if (success)
+                        Console.WriteLine("✅ PDF data written to OPC UA server!");
+                    else
+                        Console.WriteLine("⚠️ Some OPC UA writes may have failed.");
+                    
                     await opcClient.DisconnectAsync();
                 }
             }

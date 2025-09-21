@@ -26,13 +26,21 @@ namespace FileReader
 
     public class NodeMappings
     {
-        public string StartedTime { get; set; } = "ns=2;s=PDF.StartedTime";
-        public string CompletedTime { get; set; } = "ns=2;s=PDF.CompletedTime";
-        public string SampleMass { get; set; } = "ns=2;s=PDF.SampleMass";
-        public string AbsoluteDensity { get; set; } = "ns=2;s=PDF.AbsoluteDensity";
-        public string MeasurementCount { get; set; } = "ns=2;s=PDF.MeasurementCount";
-        public string LastExtracted { get; set; } = "ns=2;s=PDF.LastExtracted";
-        public string CycleNodePrefix { get; set; } = "ns=2;s=PDF.Cycle";
+        public string StartedTime { get; set; } = "ns=2;s=Channel1.Device1.started";
+        public string CompletedTime { get; set; } = "ns=2;s=Channel1.Device1.completed";
+        public string SampleMass { get; set; } = "ns=2;s=Channel1.Device1.sample_mass";
+        public string AbsoluteDensity { get; set; } = "ns=2;s=Channel1.Device1.absolute_density";
+        public string CycleRow1 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row1";
+        public string CycleRow2 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row2";
+        public string CycleRow3 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row3";
+        public string CycleRow4 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row4";
+        public string CycleRow5 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row5";
+        public string CycleRow6 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row6";
+        public string CycleRow7 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row7";
+        public string CycleRow8 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row8";
+        public string CycleRow9 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row9";
+        public string CycleRow10 { get; set; } = "ns=2;s=Channel1.Device1.cycle_row10";
+        public string DataImportArray { get; set; } = "ns=2;s=Channel1.Device1.Data_import";
     }
 
     public class ApplicationSettings
@@ -145,15 +153,8 @@ namespace FileReader
                 case "absolutedensity":
                     mappings.AbsoluteDensity = nodeId;
                     break;
-                case "measurementcount":
-                    mappings.MeasurementCount = nodeId;
-                    break;
-                case "lastextracted":
-                    mappings.LastExtracted = nodeId;
-                    break;
-                case "cyclenodeprefix":
-                    mappings.CycleNodePrefix = nodeId;
-                    break;
+                // Note: MeasurementCount, LastExtracted, and CycleNodePrefix properties removed
+                // Individual cycle rows are now used instead
             }
             
             SaveConfiguration();
