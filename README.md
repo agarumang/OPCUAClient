@@ -58,7 +58,7 @@ The application can write measurement data as double arrays:
 ```csharp
 // Example: Write measurement values as array
 double[] values = {18577, 13981, 13.9755, 0.1306, 0.5474, -0.0052};
-opcClient.WriteDoubleArray("Channel1.Device1.Tag3", values);
+opcClient.WriteDoubleArray("pdf_extractor.Data_import.Tag3", values);
 ```
 
 ## Troubleshooting

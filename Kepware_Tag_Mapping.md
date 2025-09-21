@@ -6,25 +6,25 @@ The application is now configured to write PDF measurement data to your specific
 ## Tag Mappings
 
 ### Basic Information Tags
-- **started** → `ns=2;s=Channel1.Device1.started` - PDF start time
-- **completed** → `ns=2;s=Channel1.Device1.completed` - PDF completion time  
-- **sample_mass** → `ns=2;s=Channel1.Device1.sample_mass` - Sample mass value
-- **absolute_density** → `ns=2;s=Channel1.Device1.absolute_density` - Absolute density value
+- **started** → `ns=2;s=pdf_extractor.Data_import.started` - PDF start time
+- **completed** → `ns=2;s=pdf_extractor.Data_import.completed` - PDF completion time  
+- **sample_mass** → `ns=2;s=pdf_extractor.Data_import.sample_mass` - Sample mass value
+- **absolute_density** → `ns=2;s=pdf_extractor.Data_import.absolute_density` - Absolute density value
 
 ### Measurement Cycle Tags (Comma-Separated Rows)
-- **cycle_row1** → `ns=2;s=Channel1.Device1.cycle_row1` - First measurement row as CSV
-- **cycle_row2** → `ns=2;s=Channel1.Device1.cycle_row2` - Second measurement row as CSV
-- **cycle_row3** → `ns=2;s=Channel1.Device1.cycle_row3` - Third measurement row as CSV
-- **cycle_row4** → `ns=2;s=Channel1.Device1.cycle_row4` - Fourth measurement row as CSV
-- **cycle_row5** → `ns=2;s=Channel1.Device1.cycle_row5` - Fifth measurement row as CSV
-- **cycle_row6** → `ns=2;s=Channel1.Device1.cycle_row6` - Sixth measurement row as CSV
-- **cycle_row7** → `ns=2;s=Channel1.Device1.cycle_row7` - Seventh measurement row as CSV
-- **cycle_row8** → `ns=2;s=Channel1.Device1.cycle_row8` - Eighth measurement row as CSV
-- **cycle_row9** → `ns=2;s=Channel1.Device1.cycle_row9` - Ninth measurement row as CSV
-- **cycle_row10** → `ns=2;s=Channel1.Device1.cycle_row10` - Tenth measurement row as CSV
+- **cycle_row1** → `ns=2;s=pdf_extractor.Data_import.cycle_row1` - First measurement row as CSV
+- **cycle_row2** → `ns=2;s=pdf_extractor.Data_import.cycle_row2` - Second measurement row as CSV
+- **cycle_row3** → `ns=2;s=pdf_extractor.Data_import.cycle_row3` - Third measurement row as CSV
+- **cycle_row4** → `ns=2;s=pdf_extractor.Data_import.cycle_row4` - Fourth measurement row as CSV
+- **cycle_row5** → `ns=2;s=pdf_extractor.Data_import.cycle_row5` - Fifth measurement row as CSV
+- **cycle_row6** → `ns=2;s=pdf_extractor.Data_import.cycle_row6` - Sixth measurement row as CSV
+- **cycle_row7** → `ns=2;s=pdf_extractor.Data_import.cycle_row7` - Seventh measurement row as CSV
+- **cycle_row8** → `ns=2;s=pdf_extractor.Data_import.cycle_row8` - Eighth measurement row as CSV
+- **cycle_row9** → `ns=2;s=pdf_extractor.Data_import.cycle_row9` - Ninth measurement row as CSV
+- **cycle_row10** → `ns=2;s=pdf_extractor.Data_import.cycle_row10` - Tenth measurement row as CSV
 
 ### Array Data Tag
-- **Data_import** → `ns=2;s=Channel1.Device1.Data_import` - First measurement row as double array
+- **Data_import** → `ns=2;s=pdf_extractor.Data_import.Data_import` - First measurement row as double array
 
 ## Data Format Examples
 
