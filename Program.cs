@@ -155,12 +155,18 @@ namespace FileReader
                 }
 
                 var excelPath = Path.Combine(excelFolderPath, config.ExcelFileName);
-                var measurementTable = CreateMeasurementTable(data);
-                var tablesToExport = new List<PdfDataExtractor.TableData> { measurementTable };
+                var tablesToExport = new List<PdfDataExtractor.TableData>();
                 
                 if (data.Tables.Any())
                 {
+                    // Use the extracted tables directly since they already contain the measurement data
                     tablesToExport.AddRange(data.Tables);
+                }
+                else
+                {
+                    // Fallback: create measurement table manually if extraction didn't work
+                    var measurementTable = CreateMeasurementTable(data);
+                    tablesToExport.Add(measurementTable);
                 }
 
                 var extractor = new PdfDataExtractor();
