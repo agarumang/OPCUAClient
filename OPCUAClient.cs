@@ -105,25 +105,50 @@ namespace FileReader
 
         public bool WriteValue(string nodeId, object value)
         {
-            if (!IsConnected) return false;
+            if (!IsConnected) 
+            {
+                Console.WriteLine($"⚠️ WriteValue called but not connected - NodeId: {nodeId}");
+                return false;
+            }
 
             try
             {
+                Console.WriteLine($"🔧 WriteValue called - NodeId: {nodeId}, Value: '{value}', Type: {value?.GetType().Name}, Length: {value?.ToString().Length}");
+                
+                // Ensure we have a clean string value
+                var stringValue = value?.ToString() ?? "";
+                Console.WriteLine($"🔧 Converted to string: '{stringValue}'");
+                
                 var writeValue = new WriteValue()
                 {
                     NodeId = new NodeId(nodeId),
                     AttributeId = Attributes.Value,
-                    Value = new DataValue(new Variant(value))
+                    Value = new DataValue(new Variant(stringValue))
                 };
 
                 var writeValues = new WriteValueCollection { writeValue };
                 _session.Write(null, writeValues, out StatusCodeCollection results, out DiagnosticInfoCollection diagnostics);
 
-                return results?.Count > 0 && StatusCode.IsGood(results[0]);
+                var success = results?.Count > 0 && StatusCode.IsGood(results[0]);
+                
+                if (success)
+                {
+                    Console.WriteLine($"🔧 ✅ WriteValue SUCCESS - NodeId: {nodeId}, Final Value: '{stringValue}'");
+                }
+                else
+                {
+                    Console.WriteLine($"🔧 ❌ WriteValue FAILED - NodeId: {nodeId}, Status: {results?[0]}, Value: '{stringValue}'");
+                    if (diagnostics?.Count > 0)
+                    {
+                        Console.WriteLine($"    Diagnostic info: {diagnostics[0]}");
+                    }
+                }
+                
+                return success;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ Write failed for {nodeId}: {ex.Message}");
+                Console.WriteLine($"⚠️ Write exception for {nodeId} (value: '{value}'): {ex.Message}");
                 return false;
             }
         }
@@ -261,14 +286,29 @@ namespace FileReader
                         if (measurementTable.Rows[i].Count >= 7)
                         {
                             // Create comma-separated string: "Cycle#,Blank,Sample,Volume,VolumeDeviation,Density,DensityDeviation"
-                            var rowData = string.Join(",", measurementTable.Rows[i]);
+                            var currentRow = measurementTable.Rows[i]; // Store reference to avoid any potential issues
+                            var rowData = string.Join(",", currentRow);
                             
                             // Get the appropriate cycle row tag
                             string cycleRowNodeId = GetCycleRowNodeId(i + 1);
                             if (!string.IsNullOrEmpty(cycleRowNodeId))
                             {
-                                success &= WriteValue(cycleRowNodeId, rowData);
-                                Console.WriteLine($"✅ Written to cycle_row{i + 1}: {rowData}");
+                                Console.WriteLine($"🔍 DEBUG: About to write to cycle_row{i + 1}");
+                                Console.WriteLine($"    Node ID: {cycleRowNodeId}");
+                                Console.WriteLine($"    Data: {rowData}");
+                                Console.WriteLine($"    Row index: {i}, Row count: {currentRow.Count}");
+                                Console.WriteLine($"    Individual values: [{string.Join(", ", currentRow)}]");
+                                
+                                var writeResult = WriteValue(cycleRowNodeId, rowData);
+                                success &= writeResult;
+                                
+                                if (writeResult)
+                                    Console.WriteLine($"✅ Successfully written to cycle_row{i + 1}: {rowData}");
+                                else
+                                    Console.WriteLine($"❌ Failed to write to cycle_row{i + 1}: {rowData}");
+                                
+                                // Add a small delay to ensure writes don't interfere with each other
+                                System.Threading.Thread.Sleep(10);
                             }
                         }
                     }
