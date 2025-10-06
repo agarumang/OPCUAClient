@@ -45,8 +45,8 @@ namespace FileReader
 
     public class ApplicationSettings
     {
-        public string ExcelFolderName { get; set; } = "excel";
-        public string ExcelFileName { get; set; } = "ExtractedExcel.xlsx";
+        public string OutputFolderName { get; set; } = "output";
+        public string CsvFileName { get; set; } = "ExtractedData.csv";
         public int MaxMeasurementCycles { get; set; } = 10;
     }
 
