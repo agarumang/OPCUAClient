@@ -26,6 +26,7 @@ namespace FileReader
 
     public class NodeMappings
     {
+        // Existing mappings
         public string StartedTime { get; set; } = "ns=2;s=pdf_extractor.Data_import.started";
         public string CompletedTime { get; set; } = "ns=2;s=pdf_extractor.Data_import.completed";
         public string SampleMass { get; set; } = "ns=2;s=pdf_extractor.Data_import.sample_mass";
@@ -41,6 +42,42 @@ namespace FileReader
         public string CycleRow9 { get; set; } = "ns=2;s=pdf_extractor.Data_import.cycle_row9";
         public string CycleRow10 { get; set; } = "ns=2;s=pdf_extractor.Data_import.cycle_row10";
         public string DataImportArray { get; set; } = "ns=2;s=pdf_extractor.Data_import.Data_import";
+
+        // Report Info mappings
+        public string ReportGenerated { get; set; } = "ns=2;s=pdf_extractor.ReportInfo.generated";
+        public string SourceFile { get; set; } = "ns=2;s=pdf_extractor.ReportInfo.source_file";
+        public string ReportDate { get; set; } = "ns=2;s=pdf_extractor.ReportInfo.report_date";
+        public string SerialNumber { get; set; } = "ns=2;s=pdf_extractor.ReportInfo.serial_number";
+        public string ReportType { get; set; } = "ns=2;s=pdf_extractor.ReportInfo.report_type";
+
+        // Instrument mappings
+        public string InstrumentName { get; set; } = "ns=2;s=pdf_extractor.Instrument.instrument_name";
+        public string InstrumentSerialNumber { get; set; } = "ns=2;s=pdf_extractor.Instrument.serial_number";
+        public string InstrumentVersion { get; set; } = "ns=2;s=pdf_extractor.Instrument.version";
+
+        // Sample mappings (additional to existing ones)
+        public string SampleRecord { get; set; } = "ns=2;s=pdf_extractor.Sample.record";
+        public string SampleOperator { get; set; } = "ns=2;s=pdf_extractor.Sample.operator";
+        public string SampleSubmitter { get; set; } = "ns=2;s=pdf_extractor.Sample.submitter";
+        public string ReportTime { get; set; } = "ns=2;s=pdf_extractor.Sample.report_time";
+
+        // Parameters mappings
+        public string ChamberDiameter { get; set; } = "ns=2;s=pdf_extractor.Parameters.chamber_diameter";
+        public string PreparationCycles { get; set; } = "ns=2;s=pdf_extractor.Parameters.preparation_cycles";
+        public string MeasurementCycles { get; set; } = "ns=2;s=pdf_extractor.Parameters.measurement_cycles";
+        public string BlankData { get; set; } = "ns=2;s=pdf_extractor.Parameters.blank_data";
+        public string ConsolidationForce { get; set; } = "ns=2;s=pdf_extractor.Parameters.consolidation_force";
+        public string ConversionFactor { get; set; } = "ns=2;s=pdf_extractor.Parameters.conversion_factor";
+        public string ZeroDepth { get; set; } = "ns=2;s=pdf_extractor.Parameters.zero_depth";
+
+        // Results mappings
+        public string AverageEnvelopeVolume { get; set; } = "ns=2;s=pdf_extractor.Results.average_envelope_volume";
+        public string AverageEnvelopeDensity { get; set; } = "ns=2;s=pdf_extractor.Results.average_envelope_density";
+        public string SpecificPoreVolume { get; set; } = "ns=2;s=pdf_extractor.Results.specific_pore_volume";
+        public string Porosity { get; set; } = "ns=2;s=pdf_extractor.Results.porosity";
+        public string PercentSampleVolume { get; set; } = "ns=2;s=pdf_extractor.Results.percent_sample_volume";
+        public string StandardDeviationVolume { get; set; } = "ns=2;s=pdf_extractor.Results.standard_deviation_volume";
+        public string StandardDeviationDensity { get; set; } = "ns=2;s=pdf_extractor.Results.standard_deviation_density";
     }
 
     public class ApplicationSettings
